@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <title>Quản lý Khách hàng</title>
+    <style>
+      table, th, td { border: 1px solid black; border-collapse: collapse; padding: 5px;}
+      .flash { margin: 10px 0; padding: 10px; border-radius: 5px;}
+      .success { background-color: #c8e6c9; }
+      .danger { background-color: #f8d7da; }
+      .warning { background-color: #fff3cd; }
+      .info { background-color: #d1ecf1; }
+    </style>
+</head>
+<body>
+    <h1>Quản lý Khách hàng</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <h2>Thêm Khách Hàng</h2>
+    <form action="{{ url_for('add_customer') }}" method="post">
+        <label>ID KH: <input type="text" name="id" /></label><br />
+        <label>Tên KH: <input type="text" name="name" /></label><br />
+        <label>Số điện thoại: <input type="text" name="phone" /></label><br />
+        <label>Email: <input type="email" name="email" /></label><br />
+        <label>Địa chỉ: <input type="text" name="address" /></label><br />
+        <button type="submit">Thêm Khách Hàng</button>
+    </form>
+
+    <h2>Tìm kiếm khách hàng theo số điện thoại</h2>
+    <form action="{{ url_for('search_customer') }}" method="get">
+        <label>Số điện thoại: <input type="text" name="phone" /></label>
+        <button type="submit">Tìm kiếm</button>
+    </form>
+
+    <h2>Danh sách khách hàng</h2>
+    {% if customers %}
+    <table>
+        <tr>
+            <th>ID</th><th>Tên</th><th>Điện thoại</th><th>Email</th><th>Địa chỉ</th><th>Điểm tích lũy</th><th>Hạng thành viên</th><th>Hành động</th>
+        </tr>
+        {% for c in customers %}
+        <tr>
+            <td>{{ c.id }}</td>
+            <td>{{ c.name }}</td>
+            <td>{{ c.phone }}</td>
+            <td>{{ c.email }}</td>
+            <td>{{ c.address }}</td>
+            <td>{{ c.points }}</td>
+            <td>{{ c.member_level }}</td>
+            <td>
+                <a href="{{ url_for('edit_customer', customer_id=c.id) }}">Sửa</a>
+                |
+                <form action="{{ url_for('delete_customer', customer_id=c.id) }}" method="post" style="display:inline;" onsubmit="return confirm('Bạn có chắc chắn muốn xóa khách hàng này?');">
+                    <button type="submit">Xóa</button>
+                </form>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+      <p>Chưa có khách hàng nào.</p>
+    {% endif %}
+</body>
+</html>

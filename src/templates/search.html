@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <title>Kết quả tìm kiếm</title>
+</head>
+<body>
+    <h1>Thông tin khách hàng</h1>
+    <p><b>ID:</b> {{ customer.id }}</p>
+    <p><b>Tên:</b> {{ customer.name }}</p>
+    <p><b>Số điện thoại:</b> {{ customer.phone }}</p>
+    <p><b>Email:</b> {{ customer.email }}</p>
+    <p><b>Địa chỉ:</b> {{ customer.address }}</p>
+    <p><b>Điểm tích lũy:</b> {{ customer.points }}</p>
+    <p><b>Hạng thành viên:</b> {{ customer.member_level }}</p>
+
+    <p><a href="{{ url_for('home') }}">Quay lại trang chính</a></p>
+</body>
+</html>
+

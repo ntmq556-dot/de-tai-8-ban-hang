@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <title>Sửa Thông Tin Khách Hàng</title>
+    <style>
+      .flash { margin: 10px 0; padding: 10px; border-radius: 5px; }
+      .success { background-color: #c8e6c9; }
+      .danger { background-color: #f8d7da; }
+      .warning { background-color: #fff3cd; }
+      .info { background-color: #d1ecf1; }
+    </style>
+</head>
+<body>
+    <h1>Sửa Thông Tin Khách Hàng</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form method="post">
+        <label>ID KH: {{ customer.id }}</label><br />
+        <label>Tên KH: <input type="text" name="name" value="{{ customer.name }}" required/></label><br />
+        <label>Số điện thoại: <input type="text" name="phone" value="{{ customer.phone }}" required/></label><br />
+        <label>Email: <input type="email" name="email" value="{{ customer.email }}"/></label><br />
+        <label>Địa chỉ: <input type="text" name="address" value="{{ customer.address }}"/></label><br />
+        <button type="submit">Lưu Thay Đổi</button>
+    </form>
+
+    <p><a href="{{ url_for('home') }}">Quay lại trang chính</a></p>
+</body>
+</html>
