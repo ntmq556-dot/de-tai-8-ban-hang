@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <title>Sửa Thông Tin Sản Phẩm</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .flash { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #c8e6c9; }
+        .danger { background-color: #f8d7da; }
+        .warning { background-color: #fff3cd; }
+        .info { background-color: #d1ecf1; }
+        .field { margin-bottom: 10px; }
+        .field label { display: block; margin-bottom: 4px; font-weight: bold; }
+        .field input, .field select { width: 320px; padding: 6px; }
+    </style>
+</head>
+<body>
+    <h1>Sửa Thông Tin Sản Phẩm</h1>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form action="{{ url_for('edit_product_route', product_id=product.id) }}" method="post">
+        <div class="field">
+            <label>ID Sản phẩm: {{ product.id }}</label>
+        </div>
+        <div class="field">
+            <label for="sku">Mã SKU:</label>
+            <input id="sku" type="text" name="sku" value="{{ product.sku }}" required />
+        </div>
+        <div class="field">
+            <label for="name">Tên sản phẩm:</label>
+            <input id="name" type="text" name="name" value="{{ product.name }}" required />
+        </div>
+        <div class="field">
+            <label for="category_id">Danh mục:</label>
+            <select id="category_id" name="category_id">
+                <option value="">-- Chưa phân loại --</option>
+                {% for cat in categories %}
+                    <option value="{{ cat.id }}" {% if product.category_id == cat.id %}selected{% endif %}>
+                        {{ cat.name }}
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="field">
+            <label for="price">Giá bán (VNĐ):</label>
+            <input id="price" type="number" name="price" step="100" min="0" value="{{ product.price|int }}" required />
+        </div>
+        <div class="field">
+            <label for="stock">Tồn kho:</label>
+            <input id="stock" type="number" name="stock" min="0" value="{{ product.stock }}" required />
+        </div>
+        <div class="field">
+            <label for="description">Mô tả:</label>
+            <input id="description" type="text" name="description" value="{{ product.description }}" />
+        </div>
+        <div class="field">
+            <label>
+                <input type="checkbox" name="is_active" value="1" {% if product.is_active == 1 %}checked{% endif %} style="width:auto;" />
+                Đang bán
+            </label>
+        </div>
+        <button type="submit">Lưu Thay Đổi</button>
+    </form>
+
+    <p><a href="{{ url_for('catalog') }}">Quay lại Catalog &amp; Sản phẩm</a></p>
+</body>
+</html>

@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <title>Tìm kiếm nhanh Sản phẩm (POS)</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table, th, td { border: 1px solid black; border-collapse: collapse; padding: 6px 10px; }
+        th { background-color: #f2f2f2; }
+        .flash { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #c8e6c9; }
+        .danger { background-color: #f8d7da; }
+        .warning { background-color: #fff3cd; }
+        .info { background-color: #d1ecf1; }
+        .search-form { margin-bottom: 18px; padding: 12px; border: 1px solid #ccc; border-radius: 4px; }
+        .search-form input, .search-form select { padding: 6px; margin-right: 8px; }
+        .detail-box { margin-bottom: 18px; padding: 12px; border: 1px solid #999; background-color: #fafafa; border-radius: 4px; }
+        .nav-bar { margin-bottom: 14px; }
+    </style>
+</head>
+<body>
+    <h1>Tìm kiếm nhanh Sản phẩm (POS)</h1>
+
+    <div class="nav-bar">
+        <a href="{{ url_for('catalog') }}">Catalog &amp; Sản phẩm</a>
+        |
+        <a href="{{ url_for('pos_search') }}">Tìm kiếm nhanh POS</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <form class="search-form" action="{{ url_for('pos_search') }}" method="get">
+        <label for="q">Từ khóa (SKU / Tên / Mô tả):</label>
+        <input id="q" type="text" name="q" value="{{ keyword }}" placeholder="Ví dụ: TS001 hoặc Trà sữa" />
+
+        <label for="category_id">Danh mục:</label>
+        <select id="category_id" name="category_id">
+            <option value="">-- Tất cả danh mục --</option>
+            {% for cat in categories %}
+                <option value="{{ cat.id }}" {% if selected_category_id == cat.id|string %}selected{% endif %}>
+                    {{ cat.name }}
+                </option>
+            {% endfor %}
+        </select>
+
+        <label style="margin-right: 10px;">
+            <input type="checkbox" name="in_stock" value="1" {% if only_in_stock %}checked{% endif %} />
+            Chỉ sản phẩm còn hàng
+        </label>
+
+        <button type="submit">Tìm kiếm</button>
+        <a href="{{ url_for('pos_search') }}" style="margin-left: 8px;">Xóa lọc</a>
+    </form>
+
+    {% if selected_product %}
+    <div class="detail-box">
+        <h2>Chi tiết sản phẩm: {{ selected_product.name }}</h2>
+        <p><b>ID:</b> {{ selected_product.id }}</p>
+        <p><b>Mã SKU:</b> {{ selected_product.sku }}</p>
+        <p><b>Danh mục:</b> {{ selected_product.category_name }}</p>
+        <p><b>Giá bán:</b> {{ "{:,.0f}".format(selected_product.price) }} đ</p>
+        <p><b>Tồn kho:</b> {{ selected_product.stock }} ({{ selected_product.stock_status }})</p>
+        <p><b>Mô tả:</b> {{ selected_product.description }}</p>
+    </div>
+    {% endif %}
+
+    <h2>Kết quả tìm kiếm ({{ products|length }} sản phẩm)</h2>
+    {% if products %}
+    <table>
+        <tr>
+            <th>ID</th>
+            <th>SKU</th>
+            <th>Tên sản phẩm</th>
+            <th>Danh mục</th>
+            <th>Giá bán</th>
+            <th>Tồn kho</th>
+            <th>Tình trạng kho</th>
+            <th>Hành động</th>
+        </tr>
+        {% for p in products %}
+        <tr>
+            <td>{{ p.id }}</td>
+            <td>{{ p.sku }}</td>
+            <td>{{ p.name }}</td>
+            <td>{{ p.category_name }}</td>
+            <td>{{ "{:,.0f}".format(p.price) }} đ</td>
+            <td>{{ p.stock }}</td>
+            <td>{{ p.stock_status }}</td>
+            <td>
+                <a href="{{ url_for('pos_search', q=keyword, category_id=selected_category_id, in_stock='1' if only_in_stock else '', product_id=p.id) }}">
+                    Xem chi tiết
+                </a>
+            </td>
+        </tr>
+        {% endfor %}
+    </table>
+    {% else %}
+        <p>Không tìm thấy sản phẩm nào phù hợp.</p>
+    {% endif %}
+</body>
+</html>

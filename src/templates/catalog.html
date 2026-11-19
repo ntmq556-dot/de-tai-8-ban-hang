@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8" />
+    <title>Quản lý Danh mục &amp; Sản phẩm</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        table, th, td { border: 1px solid black; border-collapse: collapse; padding: 6px 10px; }
+        th { background-color: #f2f2f2; }
+        .flash { margin: 10px 0; padding: 10px; border-radius: 5px; }
+        .success { background-color: #c8e6c9; }
+        .danger { background-color: #f8d7da; }
+        .warning { background-color: #fff3cd; }
+        .info { background-color: #d1ecf1; }
+        .grid { display: flex; gap: 28px; align-items: flex-start; flex-wrap: wrap; }
+        .col-left { width: 340px; }
+        .col-right { flex: 1; min-width: 480px; }
+        .box { border: 1px solid #ccc; padding: 12px 16px; margin-bottom: 18px; border-radius: 4px; }
+        .field { margin-bottom: 10px; }
+        .field label { display: block; margin-bottom: 4px; font-weight: bold; }
+        .field input, .field select { width: 100%; box-sizing: border-box; padding: 6px; }
+        .nav-bar { margin-bottom: 14px; }
+    </style>
+</head>
+<body>
+    <h1>Quản lý Danh mục &amp; Sản phẩm</h1>
+
+    <div class="nav-bar">
+        <a href="{{ url_for('catalog') }}">Catalog &amp; Sản phẩm</a>
+        |
+        <a href="{{ url_for('pos_search') }}">Tìm kiếm nhanh POS</a>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+          <div class="flash {{ category }}">{{ message }}</div>
+        {% endfor %}
+      {% endif %}
+    {% endwith %}
+
+    <div class="grid">
+        <div class="col-left">
+            <div class="box">
+                <h2>Thêm Danh mục</h2>
+                <form action="{{ url_for('add_category_route') }}" method="post">
+                    <div class="field">
+                        <label for="cat_name">Tên danh mục:</label>
+                        <input id="cat_name" type="text" name="name" required />
+                    </div>
+                    <div class="field">
+                        <label for="cat_desc">Mô tả:</label>
+                        <input id="cat_desc" type="text" name="description" />
+                    </div>
+                    <button type="submit">Lưu danh mục</button>
+                </form>
+            </div>
+
+            <div class="box">
+                <h2>Thêm Sản phẩm</h2>
+                <form action="{{ url_for('add_product_route') }}" method="post">
+                    <div class="field">
+                        <label for="prod_sku">Mã SKU:</label>
+                        <input id="prod_sku" type="text" name="sku" required />
+                    </div>
+                    <div class="field">
+                        <label for="prod_name">Tên sản phẩm:</label>
+                        <input id="prod_name" type="text" name="name" required />
+                    </div>
+                    <div class="field">
+                        <label for="prod_cat">Danh mục:</label>
+                        <select id="prod_cat" name="category_id">
+                            <option value="">-- Chưa phân loại --</option>
+                            {% for cat in active_categories %}
+                                <option value="{{ cat.id }}">{{ cat.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="prod_price">Giá bán (VNĐ):</label>
+                        <input id="prod_price" type="number" name="price" step="100" min="0" value="0" required />
+                    </div>
+                    <div class="field">
+                        <label for="prod_stock">Tồn kho:</label>
+                        <input id="prod_stock" type="number" name="stock" min="0" value="0" required />
+                    </div>
+                    <div class="field">
+                        <label for="prod_desc">Mô tả:</label>
+                        <input id="prod_desc" type="text" name="description" />
+                    </div>
+                    <button type="submit">Lưu sản phẩm</button>
+                </form>
+            </div>
+        </div>
+
+        <div class="col-right">
+            <h2>Danh sách Danh mục</h2>
+            {% if categories %}
+            <table>
+                <tr>
+                    <th>ID</th>
+                    <th>Tên danh mục</th>
+                    <th>Mô tả</th>
+                    <th>Trạng thái</th>
+                    <th>Hành động</th>
+                </tr>
+                {% for cat in categories %}
+                <tr>
+                    <td>{{ cat.id }}</td>
+                    <td>{{ cat.name }}</td>
+                    <td>{{ cat.description }}</td>
+                    <td>{{ cat.status_label }}</td>
+                    <td>
+                        <form action="{{ url_for('toggle_category_route', category_id=cat.id) }}" method="post" style="display:inline;">
+                            <button type="submit">Đổi trạng thái</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+            {% else %}
+                <p>Chưa có danh mục nào.</p>
+            {% endif %}
+
+            <h2>Danh sách Sản phẩm</h2>
+            {% if products %}
+            <table>
+                <tr>
+                    <th>ID</th>
+                    <th>SKU</th>
+                    <th>Tên sản phẩm</th>
+                    <th>Danh mục</th>
+                    <th>Giá bán</th>
+                    <th>Tồn kho</th>
+                    <th>Trạng thái</th>
+                    <th>Hành động</th>
+                </tr>
+                {% for p in products %}
+                <tr>
+                    <td>{{ p.id }}</td>
+                    <td>{{ p.sku }}</td>
+                    <td>{{ p.name }}</td>
+                    <td>{{ p.category_name }}</td>
+                    <td>{{ "{:,.0f}".format(p.price) }} đ</td>
+                    <td>{{ p.stock }} ({{ p.stock_status }})</td>
+                    <td>{{ p.status_label }}</td>
+                    <td>
+                        <a href="{{ url_for('edit_product_route', product_id=p.id) }}">Sửa</a>
+                        |
+                        <form action="{{ url_for('toggle_product_route', product_id=p.id) }}" method="post" style="display:inline;">
+                            <button type="submit">Đổi trạng thái</button>
+                        </form>
+                    </td>
+                </tr>
+                {% endfor %}
+            </table>
+            {% else %}
+                <p>Chưa có sản phẩm nào.</p>
+            {% endif %}
+        </div>
+    </div>
+</body>
+</html>
