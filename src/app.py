@@ -1,6 +1,6 @@
 import os
 import sys
-from flask import Flask, flash, redirect, render_template, request, url_for
+from flask import Flask, flash, jsonify, redirect, render_template, request, url_for
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 SRC_DIR = os.path.join(BASE_DIR, "src")
@@ -111,6 +111,49 @@ def update_points(customer_id):
     flash(msg, "success" if success else "danger")
     return redirect(url_for("home"))
 
+# ================= MODULE 4: THANH TOÁN & IN HÓA ĐƠN (TV4) =================
+from product import search_products_fast, init_catalog_tables
+from checkout import process_checkout, get_order_history, init_checkout_tables
 
+
+@app.route("/checkout", methods=["GET"])
+def checkout_page():
+    init_catalog_tables()
+    init_checkout_tables()
+    products = search_products_fast(only_in_stock=False)
+    orders = get_order_history(limit=10)
+    return render_template("checkout.html", products=products, orders=orders)
+
+
+@app.route("/api/pos/products", methods=["GET"])
+def api_pos_products():
+    kw = request.args.get("q", "")
+    items = search_products_fast(keyword=kw, only_in_stock=False)
+    # Chuẩn hóa trả về cả 'id' và 'product_id' để đồng bộ toàn nhóm
+    for p in items:
+        p["product_id"] = p["id"]
+        p["product_name"] = p["name"]
+        p["stock_quantity"] = p["stock"]
+    return jsonify({"success": True, "products": items})
+
+
+@app.route("/api/pos/customer", methods=["GET"])
+def api_pos_customer():
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify({"success": False, "message": "Vui lòng nhập SĐT hoặc mã KH."}), 400
+    cus = cm.search_customer(q)
+    if not cus:
+        return jsonify({"success": False, "message": "Không tìm thấy khách hàng."}), 404
+    return jsonify({"success": True, "customer": cus})
+
+
+@app.route("/api/pos/checkout", methods=["POST"])
+def api_pos_checkout():
+    data = request.get_json(silent=True) or {}
+    success, msg, receipt = process_checkout(data)
+    if not success:
+        return jsonify({"success": False, "message": msg}), 400
+    return jsonify({"success": True, "message": msg, "receipt": receipt})
 if __name__ == "__main__":
     app.run(debug=True)

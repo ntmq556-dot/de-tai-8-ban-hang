@@ -1,0 +1,576 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Module 4 - Thanh toán & In Hóa đơn (Checkout & Billing)</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f4f6f9; }
+        .product-card { cursor: pointer; transition: transform 0.12s, box-shadow 0.12s; }
+        .product-card:hover { transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+        .product-card.out-of-stock { opacity: 0.55; cursor: not-allowed; }
+        .cart-scroll { max-height: 330px; overflow-y: auto; }
+
+        /* Khung mẫu hóa đơn khổ giấy in nhiệt K80 */
+        #receipt-paper {
+            width: 320px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 16px;
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 13px;
+            color: #000;
+            border: 1px dashed #999;
+        }
+        #receipt-paper table { width: 100%; border-collapse: collapse; }
+        #receipt-paper th, #receipt-paper td { padding: 3px 0; vertical-align: top; }
+        .dashed-line { border-top: 1px dashed #000; margin: 8px 0; }
+
+        /* Chỉ in đúng tờ hóa đơn khi bấm nút In Hóa Đơn */
+        @media print {
+            body * { visibility: hidden !important; }
+            #receiptModal, #receiptModal * { visibility: visible !important; }
+            #receiptModal {
+                position: absolute !important;
+                left: 0 !important;
+                top: 0 !important;
+                width: 100% !important;
+                margin: 0 !important;
+                padding: 0 !important;
+            }
+            .modal-header, .modal-footer { display: none !important; }
+            .modal-dialog { max-width: 100% !important; margin: 0 !important; }
+            .modal-content { border: none !important; box-shadow: none !important; }
+            #receipt-paper { border: none !important; width: 80mm !important; padding: 0 !important; }
+        }
+    </style>
+</head>
+<body>
+<nav class="navbar navbar-dark bg-primary px-4 mb-3 shadow-sm">
+    <span class="navbar-brand fw-bold">POS BÁN HÀNG — MODULE 4: THANH TOÁN & IN HÓA ĐƠN</span>
+    <div class="d-flex gap-2">
+        <a href="{{ url_for('home') }}" class="btn btn-sm btn-outline-light">Khách hàng (TV1)</a>
+        <a href="/checkout" class="btn btn-sm btn-light fw-bold text-primary">Thu ngân / Thanh toán (TV4)</a>
+    </div>
+</nav>
+
+<div class="container-fluid px-4">
+    <div class="row g-3">
+        <!-- CỘT TRÁI: CHỌN / QUÉT SẢN PHẨM VÀO GIỎ -->
+        <div class="col-lg-7">
+            <div class="card shadow-sm mb-3">
+                <div class="card-header bg-white fw-bold d-flex justify-content-between align-items-center">
+                    <span>Danh sách sản phẩm (Bấm chọn hoặc nhập mã SKU/Barcode)</span>
+                    <span class="badge bg-secondary" id="product-count">{{ products|length }} sản phẩm</span>
+                </div>
+                <div class="card-body">
+                    <div class="input-group mb-3">
+                        <input type="text" id="search-input" class="form-control" placeholder="Nhập tên sản phẩm hoặc quét mã SKU/Barcode rồi nhấn Enter..." autofocus>
+                        <button class="btn btn-primary" onclick="filterProducts()">Tìm kiếm</button>
+                    </div>
+
+                    <div class="row g-2" id="product-grid">
+                        {% for p in products %}
+                        <div class="col-md-4 col-sm-6 product-item"
+                             data-id="{{ p.id }}"
+                             data-sku="{{ p.sku }}"
+                             data-name="{{ p.name }}"
+                             data-price="{{ p.price }}"
+                             data-stock="{{ p.stock }}">
+                            <div class="card h-100 product-card {% if p.stock <= 0 %}out-of-stock{% endif %}"
+                                 onclick="addToCartFromElement(this.parentElement)">
+                                <div class="card-body p-2">
+                                    <div class="d-flex justify-content-between">
+                                        <span class="badge bg-light text-dark border">{{ p.sku }}</span>
+                                        {% if p.stock > 0 %}
+                                            <span class="badge bg-success">Còn: {{ p.stock }}</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">Hết hàng</span>
+                                        {% endif %}
+                                    </div>
+                                    <div class="fw-bold mt-1 text-truncate" title="{{ p.name }}">{{ p.name }}</div>
+                                    <div class="text-danger fw-bold mt-1">{{ "{:,.0f}".format(p.price) }} đ</div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+
+            <!-- LỊCH SỬ HÓA ĐƠN GẦN ĐÂY -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-white fw-bold">Hóa đơn vừa thanh toán gần đây</div>
+                <div class="card-body table-responsive p-0">
+                    <table class="table table-sm table-hover mb-0 align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th class="ps-3">Mã HĐ</th>
+                                <th>Khách hàng</th>
+                                <th>Phương thức</th>
+                                <th>Tổng tiền</th>
+                                <th>Thời gian</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for o in orders %}
+                            <tr>
+                                <td class="ps-3 fw-bold text-primary">{{ o.order_id }}</td>
+                                <td>{{ o.customer_name or 'Khách lẻ' }}</td>
+                                <td><span class="badge bg-info text-dark">{{ o.payment_method }}</span></td>
+                                <td class="fw-bold text-danger">{{ "{:,.0f}".format(o.total_amount) }} đ</td>
+                                <td class="small text-muted">{{ o.created_at }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="5" class="text-center text-muted py-3">Chưa có hóa đơn nào</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- CỘT PHẢI: GIỎ HÀNG (CART) & THANH TOÁN (CHECKOUT) -->
+        <div class="col-lg-5">
+            <div class="card shadow-sm border-primary">
+                <div class="card-header bg-primary text-white fw-bold d-flex justify-content-between align-items-center">
+                    <span>GIỎ HÀNG HIỆN TẠI</span>
+                    <button class="btn btn-sm btn-outline-light" onclick="clearCart()">Xóa tất cả</button>
+                </div>
+
+                <div class="card-body">
+                    <!-- Bảng giỏ hàng -->
+                    <div class="cart-scroll mb-3 border rounded">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light sticky-top">
+                                <tr>
+                                    <th>Sản phẩm</th>
+                                    <th class="text-center" style="width: 110px;">SL</th>
+                                    <th class="text-end">Thành tiền</th>
+                                    <th style="width: 32px;"></th>
+                                </tr>
+                            </thead>
+                            <tbody id="cart-tbody">
+                                <tr><td colspan="4" class="text-center text-muted py-4">Chưa có sản phẩm trong giỏ</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Tích điểm khách hàng (Kết nối TV1) -->
+                    <div class="bg-light p-2 rounded border mb-3">
+                        <label class="form-label small fw-bold mb-1">Khách hàng thành viên (Tích/Đổi điểm):</label>
+                        <div class="input-group input-group-sm mb-1">
+                            <input type="text" id="customer-query" class="form-control" placeholder="Nhập SĐT hoặc mã KH001...">
+                            <button class="btn btn-outline-primary" onclick="lookupCustomer()">Tìm KH</button>
+                            <button class="btn btn-outline-secondary" onclick="clearCustomer()">Khách lẻ</button>
+                        </div>
+                        <div id="customer-info" class="small text-muted">Đang tính cho: <strong>Khách lẻ</strong></div>
+                        <div id="redeem-box" class="mt-2 d-none">
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text">Dùng điểm (1đ = 1.000đ)</span>
+                                <input type="number" id="points-used" class="form-control" value="0" min="0" oninput="recalculateTotals()">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Tổng kết tiền -->
+                    <div class="border-top pt-2 mb-3">
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span>Tạm tính:</span>
+                            <span id="lbl-subtotal" class="fw-bold">0 đ</span>
+                        </div>
+                        <div class="d-flex justify-content-between small mb-1 text-success">
+                            <span>Giảm giá từ điểm:</span>
+                            <span id="lbl-discount">- 0 đ</span>
+                        </div>
+                        <div class="d-flex justify-content-between fs-5 fw-bold text-danger border-top pt-1">
+                            <span>TỔNG THANH TOÁN:</span>
+                            <span id="lbl-total">0 đ</span>
+                        </div>
+                    </div>
+
+                    <!-- Phương thức thanh toán -->
+                    <div class="mb-3">
+                        <label class="form-label small fw-bold">Phương thức thanh toán:</label>
+                        <div class="btn-group w-100" role="group">
+                            <input type="radio" class="btn-check" name="payMethod" id="pay-cash" value="CASH" checked onchange="onPaymentMethodChange()">
+                            <label class="btn btn-outline-success" for="pay-cash">Tiền mặt</label>
+
+                            <input type="radio" class="btn-check" name="payMethod" id="pay-transfer" value="TRANSFER" onchange="onPaymentMethodChange()">
+                            <label class="btn btn-outline-primary" for="pay-transfer">Chuyển khoản QR</label>
+
+                            <input type="radio" class="btn-check" name="payMethod" id="pay-card" value="CARD" onchange="onPaymentMethodChange()">
+                            <label class="btn btn-outline-dark" for="pay-card">Quẹt thẻ</label>
+                        </div>
+                    </div>
+
+                    <!-- Khu vực nhập tiền mặt & tính tiền thừa -->
+                    <div id="cash-section" class="bg-warning-subtle p-2 rounded border border-warning mb-3">
+                        <div class="row g-2 align-items-center mb-1">
+                            <div class="col-5 small fw-bold">Tiền khách đưa:</div>
+                            <div class="col-7">
+                                <input type="number" id="amount-paid" class="form-control form-control-sm fw-bold text-end" placeholder="0" oninput="recalculateTotals()">
+                            </div>
+                        </div>
+                        <div class="d-flex gap-1 justify-content-end mb-2" id="quick-cash-btns"></div>
+                        <div class="d-flex justify-content-between fw-bold">
+                            <span>Tiền thừa trả khách:</span>
+                            <span id="lbl-change" class="text-primary fs-6">0 đ</span>
+                        </div>
+                    </div>
+
+                    <!-- Khu vực hiển thị QR chuyển khoản -->
+                    <div id="transfer-section" class="text-center bg-light p-2 rounded border mb-3 d-none">
+                        <div class="small fw-bold text-primary mb-1">Quét mã QR để thanh toán đúng số tiền</div>
+                        <img id="qr-preview" src="" alt="QR Chuyển khoản" style="width: 150px; height: 150px;" class="border bg-white p-1">
+                    </div>
+
+                    <button id="btn-checkout" class="btn btn-success btn-lg w-100 fw-bold shadow-sm" onclick="submitCheckout()">
+                        THANH TOÁN & IN HÓA ĐƠN
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL XEM TRƯỚC & IN HÓA ĐƠN (RECEIPT GENERATION) -->
+<div class="modal fade" id="receiptModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-success text-white">
+                <h5 class="modal-title">Hóa đơn bán hàng</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body bg-light">
+                <div id="receipt-paper">
+                    <div class="text-center fw-bold fs-6">CỬA HÀNG BÁN LẺ POS</div>
+                    <div class="text-center small">ĐC: 123 Đường Số 1, TP.HCM</div>
+                    <div class="text-center small">ĐT: 0909.123.456</div>
+                    <div class="dashed-line"></div>
+                    <div class="text-center fw-bold">HÓA ĐƠN THANH TOÁN</div>
+                    <div class="small">Mã HĐ: <strong id="r-order-id"></strong></div>
+                    <div class="small">Ngày: <span id="r-date"></span></div>
+                    <div class="small">Khách hàng: <span id="r-customer"></span></div>
+                    <div class="small">Thanh toán: <span id="r-method"></span></div>
+                    <div class="dashed-line"></div>
+                    <table>
+                        <thead>
+                            <tr style="border-bottom: 1px dashed #000;">
+                                <th align="left">Món</th>
+                                <th align="center">SL</th>
+                                <th align="right">T.Tiền</th>
+                            </tr>
+                        </thead>
+                        <tbody id="r-items"></tbody>
+                    </table>
+                    <div class="dashed-line"></div>
+                    <div class="d-flex justify-content-between">
+                        <span>Tạm tính:</span><span id="r-subtotal"></span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Giảm giá:</span><span id="r-discount"></span>
+                    </div>
+                    <div class="d-flex justify-content-between fw-bold fs-6 mt-1">
+                        <span>TỔNG CỘNG:</span><span id="r-total"></span>
+                    </div>
+                    <div class="d-flex justify-content-between mt-1">
+                        <span>Khách đưa:</span><span id="r-paid"></span>
+                    </div>
+                    <div class="d-flex justify-content-between">
+                        <span>Tiền thừa:</span><span id="r-change"></span>
+                    </div>
+                    <div id="r-points-box" class="small mt-1"></div>
+                    <div class="dashed-line"></div>
+                    <div class="text-center small">Cảm ơn quý khách & Hẹn gặp lại!</div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal" onclick="location.reload()">Đóng & Làm mới</button>
+                <button type="button" class="btn btn-primary fw-bold" onclick="window.print()">In Hóa Đơn (Print)</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    // Lưu trữ giỏ hàng với bộ chuẩn hóa đồng bộ id & product_id
+    let cart = [];
+    let selectedCustomer = null;
+
+    function formatVND(num) {
+        return Number(num || 0).toLocaleString('vi-VN') + ' đ';
+    }
+
+    // Adapter chuẩn hóa sản phẩm từ bất kỳ module nào (TV2 dùng id/name, TV3 dùng product_id/product_name)
+    function normalizeProduct(raw) {
+        return {
+            product_id: Number(raw.product_id ?? raw.id),
+            id: Number(raw.id ?? raw.product_id),
+            sku: raw.sku || raw.barcode || '',
+            product_name: raw.product_name || raw.name || 'Sản phẩm',
+            price: Number(raw.price || 0),
+            stock: Number(raw.stock ?? raw.stock_quantity ?? 0)
+        };
+    }
+
+    function addToCartFromElement(el) {
+        const p = normalizeProduct({
+            id: el.dataset.id,
+            sku: el.dataset.sku,
+            name: el.dataset.name,
+            price: el.dataset.price,
+            stock: el.dataset.stock
+        });
+        addToCart(p);
+    }
+
+    function addToCart(rawProduct) {
+        const p = normalizeProduct(rawProduct);
+        if (p.stock <= 0) {
+            alert(`Sản phẩm "${p.product_name}" đã hết hàng!`);
+            return;
+        }
+        const existing = cart.find(item => item.product_id === p.product_id);
+        if (existing) {
+            if (existing.quantity + 1 > p.stock) {
+                alert(`Kho chỉ còn tối đa ${p.stock} sản phẩm "${p.product_name}"!`);
+                return;
+            }
+            existing.quantity += 1;
+        } else {
+            cart.push({ ...p, quantity: 1 });
+        }
+        renderCart();
+    }
+
+    function updateQty(productId, delta) {
+        const item = cart.find(i => i.product_id === productId);
+        if (!item) return;
+        const nextQty = item.quantity + delta;
+        if (nextQty <= 0) {
+            removeFromCart(productId);
+            return;
+        }
+        if (nextQty > item.stock) {
+            alert(`Kho chỉ còn ${item.stock} sản phẩm!`);
+            return;
+        }
+        item.quantity = nextQty;
+        renderCart();
+    }
+
+    function removeFromCart(productId) {
+        cart = cart.filter(i => i.product_id !== productId);
+        renderCart();
+    }
+
+    function clearCart() {
+        cart = [];
+        renderCart();
+    }
+
+    function renderCart() {
+        const tbody = document.getElementById('cart-tbody');
+        if (cart.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="4" class="text-center text-muted py-4">Chưa có sản phẩm trong giỏ</td></tr>';
+            recalculateTotals();
+            return;
+        }
+
+        tbody.innerHTML = cart.map(item => `
+            <tr>
+                <td>
+                    <div class="fw-bold small">${item.product_name}</div>
+                    <div class="text-muted" style="font-size: 11px;">${formatVND(item.price)}</div>
+                </td>
+                <td class="text-center">
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-secondary px-2" onclick="updateQty(${item.product_id}, -1)">-</button>
+                        <span class="btn btn-light disabled text-dark fw-bold px-2">${item.quantity}</span>
+                        <button class="btn btn-outline-secondary px-2" onclick="updateQty(${item.product_id}, 1)">+</button>
+                    </div>
+                </td>
+                <td class="text-end fw-bold small">${formatVND(item.price * item.quantity)}</td>
+                <td class="text-end">
+                    <button class="btn btn-sm text-danger p-0" onclick="removeFromCart(${item.product_id})">&times;</button>
+                </td>
+            </tr>
+        `).join('');
+
+        recalculateTotals();
+    }
+
+    function recalculateTotals() {
+        const subtotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0);
+        let pointsUsed = 0;
+        if (selectedCustomer) {
+            const inputPts = parseInt(document.getElementById('points-used').value || '0', 10);
+            pointsUsed = Math.max(0, Math.min(inputPts, selectedCustomer.points));
+            document.getElementById('points-used').value = pointsUsed;
+        }
+
+        const discount = pointsUsed * 1000;
+        const total = Math.max(0, subtotal - discount);
+
+        document.getElementById('lbl-subtotal').innerText = formatVND(subtotal);
+        document.getElementById('lbl-discount').innerText = '- ' + formatVND(discount);
+        document.getElementById('lbl-total').innerText = formatVND(total);
+
+        // Cập nhật gợi ý tiền mặt nhanh
+        const quickBtns = document.getElementById('quick-cash-btns');
+        if (total > 0) {
+            const suggestions = [total, Math.ceil(total / 50000) * 50000, Math.ceil(total / 100000) * 100000];
+            const uniqueSug = [...new Set(suggestions)];
+            quickBtns.innerHTML = uniqueSug.map(val =>
+                `<button type="button" class="btn btn-xs btn-outline-dark py-0 px-2" style="font-size:11px" onclick="setCash(${val})">${val.toLocaleString()}</button>`
+            ).join('');
+        } else {
+            quickBtns.innerHTML = '';
+        }
+
+        // Tính tiền thừa
+        const paid = Number(document.getElementById('amount-paid').value || 0);
+        const change = paid - total;
+        const lblChange = document.getElementById('lbl-change');
+        if (change >= 0) {
+            lblChange.className = 'text-primary fs-6';
+            lblChange.innerText = formatVND(change);
+        } else {
+            lblChange.className = 'text-danger fs-6';
+            lblChange.innerText = 'Thiếu ' + formatVND(Math.abs(change));
+        }
+
+        // Cập nhật QR chuyển khoản động
+        document.getElementById('qr-preview').src =
+            `https://img.vietqr.io/image/MB-0909123456-compact2.png?amount=${total}&addInfo=THANHTOANPOS`;
+    }
+
+    function setCash(amount) {
+        document.getElementById('amount-paid').value = amount;
+        recalculateTotals();
+    }
+
+    function onPaymentMethodChange() {
+        const method = document.querySelector('input[name="payMethod"]:checked').value;
+        document.getElementById('cash-section').classList.toggle('d-none', method !== 'CASH');
+        document.getElementById('transfer-section').classList.toggle('d-none', method !== 'TRANSFER');
+        recalculateTotals();
+    }
+
+    async function lookupCustomer() {
+        const q = document.getElementById('customer-query').value.trim();
+        if (!q) return;
+        const res = await fetch(`/api/pos/customer?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        if (!data.success) {
+            alert(data.message);
+            return;
+        }
+        selectedCustomer = data.customer;
+        document.getElementById('customer-info').innerHTML =
+            `KH: <strong>${selectedCustomer.name}</strong> (${selectedCustomer.id}) — Hạng: <span class="badge bg-warning text-dark">${selectedCustomer.member_level}</span> — Điểm hiện có: <strong>${selectedCustomer.points}</strong>`;
+        document.getElementById('redeem-box').classList.remove('d-none');
+        document.getElementById('points-used').value = 0;
+        recalculateTotals();
+    }
+
+    function clearCustomer() {
+        selectedCustomer = null;
+        document.getElementById('customer-query').value = '';
+        document.getElementById('customer-info').innerHTML = 'Đang tính cho: <strong>Khách lẻ</strong>';
+        document.getElementById('redeem-box').classList.add('d-none');
+        document.getElementById('points-used').value = 0;
+        recalculateTotals();
+    }
+
+    function filterProducts() {
+        const kw = document.getElementById('search-input').value.trim().toLowerCase();
+        const cards = document.querySelectorAll('.product-item');
+        let exactMatch = null;
+
+        cards.forEach(card => {
+            const name = card.dataset.name.toLowerCase();
+            const sku = card.dataset.sku.toLowerCase();
+            const match = name.includes(kw) || sku.includes(kw);
+            card.classList.toggle('d-none', !match);
+            if (kw && sku === kw) exactMatch = card;
+        });
+
+        // Nếu quét đúng mã SKU/Barcode thì tự thêm thẳng vào giỏ hàng
+        if (exactMatch) {
+            addToCartFromElement(exactMatch);
+            document.getElementById('search-input').value = '';
+            cards.forEach(c => c.classList.remove('d-none'));
+        }
+    }
+
+    document.getElementById('search-input').addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') filterProducts();
+    });
+
+    async function submitCheckout() {
+        if (cart.length === 0) {
+            alert('Giỏ hàng đang trống!');
+            return;
+        }
+        const method = document.querySelector('input[name="payMethod"]:checked').value;
+        const pointsUsed = selectedCustomer ? parseInt(document.getElementById('points-used').value || '0', 10) : 0;
+        const amountPaid = Number(document.getElementById('amount-paid').value || 0);
+
+        const payload = {
+            customer_id: selectedCustomer ? selectedCustomer.id : null,
+            payment_method: method,
+            points_used: pointsUsed,
+            amount_paid: amountPaid,
+            items: cart.map(i => ({
+                product_id: i.product_id,
+                id: i.id,
+                quantity: i.quantity
+            }))
+        };
+
+        const res = await fetch('/api/pos/checkout', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+        if (!data.success) {
+            alert(data.message);
+            return;
+        }
+
+        // Đổ dữ liệu vào mẫu hóa đơn và bật Modal in
+        const r = data.receipt;
+        document.getElementById('r-order-id').innerText = r.order_id;
+        document.getElementById('r-date').innerText = r.created_at;
+        document.getElementById('r-customer').innerText = r.customer ? `${r.customer.name} (${r.customer.id})` : 'Khách lẻ';
+        document.getElementById('r-method').innerText = r.payment_method;
+        document.getElementById('r-items').innerHTML = r.items.map(it => `
+            <tr>
+                <td>${it.product_name}</td>
+                <td align="center">${it.quantity}</td>
+                <td align="right">${Number(it.subtotal).toLocaleString('vi-VN')}</td>
+            </tr>
+        `).join('');
+        document.getElementById('r-subtotal').innerText = formatVND(r.subtotal);
+        document.getElementById('r-discount').innerText = '-' + formatVND(r.discount_amount);
+        document.getElementById('r-total').innerText = formatVND(r.total_amount);
+        document.getElementById('r-paid').innerText = formatVND(r.amount_paid);
+        document.getElementById('r-change').innerText = formatVND(r.change_amount);
+
+        const ptsBox = document.getElementById('r-points-box');
+        if (r.customer) {
+            ptsBox.innerHTML = `Điểm cộng đơn này: +${r.points_earned}đ | Tổng điểm: ${r.customer.points} (${r.customer.member_level})`;
+        } else {
+            ptsBox.innerHTML = '';
+        }
+
+        new bootstrap.Modal(document.getElementById('receiptModal')).show();
+    }
+</script>
+</body>
+</html>
